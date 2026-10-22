@@ -1,8 +1,20 @@
-# KALYPSIS CLI
+<p align="center">
+  <a href="https://mykalypsis.gr/"><img src="docs/assets/kalypsis-logo.png" alt="KALYPSIS insurance management platform" width="260" /></a>
+</p>
+
+<h1 align="center">KALYPSIS CLI</h1>
+
+<p align="center">A public command-line project in the KALYPSIS ecosystem.</p>
+
+<p align="center"><img src="docs/assets/project-badges.svg" alt="KALYPSIS · Subsystem · CLI · Windows" width="520" /></p>
 
 [English](README.md) · [Ελληνικά](README.el.md)
 
-Repository for the planned KALYPSIS command-line project for Windows.
+[Website](https://mykalypsis.gr/) · [Repository](https://github.com/PanagiotisKotsorgios/kalypsis-cli) · [Contribute](CONTRIBUTING.md) · [Issues](https://github.com/PanagiotisKotsorgios/kalypsis-cli/issues)
+
+**KALYPSIS CLI** is the public repository for the Windows command-line project.
+Explore its documentation, discuss ideas and help shape the project.
+Repository access is free for everyone.
 
 ## Current status
 
@@ -12,6 +24,24 @@ executable, installer, release, supported command set or installation procedure.
 
 KALYPSIS Web and Desktop are separate applications; this repository does not
 contain their source code or grant access to their systems or customer data.
+
+## The KALYPSIS ecosystem
+
+One connected workflow: customers, policies, vehicles, renewals and communications.
+
+![KALYPSIS connected workflow — visual design reference](docs/assets/workflow-reference.png)
+
+*The supplied image illustrates the KALYPSIS website's workflow design direction.
+It is not a CLI screenshot or a statement of implemented CLI features.*
+
+## Project identity
+
+`kalypsis` · `kalypsis-subsystem` · `cli` · `windows` · `insurance` · `documentation`
+
+The KALYPSIS logo identifies the project ecosystem. Access to this repository
+does not grant rights to the brand or to the separate commercial applications.
+No open-source licence has been selected for this repository yet; public
+visibility is not a software licence.
 
 ## Contribute
 

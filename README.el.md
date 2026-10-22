@@ -1,8 +1,20 @@
-# KALYPSIS CLI
+<p align="center">
+  <a href="https://mykalypsis.gr/"><img src="docs/assets/kalypsis-logo.png" alt="KALYPSIS — πλατφόρμα διαχείρισης ασφαλιστικού γραφείου" width="260" /></a>
+</p>
+
+<h1 align="center">KALYPSIS CLI</h1>
+
+<p align="center">Δημόσιο έργο γραμμής εντολών στο οικοσύστημα KALYPSIS.</p>
+
+<p align="center"><img src="docs/assets/project-badges.svg" alt="KALYPSIS · Subsystem · CLI · Windows" width="520" /></p>
 
 [Ελληνικά](README.el.md) · [English](README.md)
 
-Αποθετήριο για το υπό προετοιμασία έργο γραμμής εντολών KALYPSIS για Windows.
+[Ιστότοπος](https://mykalypsis.gr/) · [Αποθετήριο](https://github.com/PanagiotisKotsorgios/kalypsis-cli) · [Συνεισφορά](CONTRIBUTING.el.md) · [Issues](https://github.com/PanagiotisKotsorgios/kalypsis-cli/issues)
+
+Το **KALYPSIS CLI** είναι το δημόσιο αποθετήριο του έργου γραμμής εντολών για Windows.
+Δείτε την τεκμηρίωση, συζητήστε ιδέες και συμβάλετε στη διαμόρφωσή του.
+Η πρόσβαση στο αποθετήριο είναι δωρεάν για όλους.
 
 ## Τρέχουσα κατάσταση
 
@@ -13,6 +25,25 @@
 Το KALYPSIS Web και το Desktop είναι ξεχωριστές εφαρμογές. Το αποθετήριο αυτό
 δεν περιέχει τον πηγαίο κώδικά τους και δεν παρέχει πρόσβαση στα συστήματα
 ή στα δεδομένα πελατών τους.
+
+## Το οικοσύστημα KALYPSIS
+
+Μία συνδεδεμένη ροή: πελάτες, συμβόλαια, οχήματα, ανανεώσεις και επικοινωνίες.
+
+![Ενιαία ροή εργασίας KALYPSIS — εικόνα αναφοράς σχεδιασμού](docs/assets/workflow-reference.png)
+
+*Η εικόνα αναφοράς που δόθηκε παρουσιάζει τη σχεδιαστική κατεύθυνση της ενότητας
+ροής εργασίας του ιστοτόπου KALYPSIS. Δεν είναι screenshot του CLI και δεν
+περιγράφει υλοποιημένες λειτουργίες του CLI.*
+
+## Ταυτότητα έργου
+
+`kalypsis` · `kalypsis-subsystem` · `cli` · `windows` · `insurance` · `documentation`
+
+Το λογότυπο KALYPSIS προσδιορίζει το οικοσύστημα του έργου. Η πρόσβαση στο
+αποθετήριο δεν παρέχει δικαιώματα στο εμπορικό σήμα ή στις ξεχωριστές εμπορικές
+εφαρμογές. Δεν έχει επιλεγεί ακόμη άδεια ανοιχτού κώδικα για το αποθετήριο·
+η δημόσια προβολή δεν αποτελεί άδεια λογισμικού.
 
 ## Συνεισφορά
 
