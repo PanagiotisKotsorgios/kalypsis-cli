@@ -22,7 +22,7 @@ function Invoke-Cli([string[]]$CommandArgs, [int]$ExpectedExit = 0, [string]$Dat
     $script:checks++
     if ($ExpectedExit -eq 0) { return (($raw -join "`n") | ConvertFrom-Json) }
 }
-$version = Invoke-Cli -CommandArgs @('--version'); Check ($version.version -eq '0.1.0') 'Version mismatch'
+$version = Invoke-Cli -CommandArgs @('--version'); Check ($version.version -eq '0.2.0') 'Version mismatch'
 $null = Invoke-Cli -CommandArgs @('init')
 $customer = (Invoke-Cli -CommandArgs @('customers','add','--first-name','Μαρία','--last-name','Δοκιμή','--city','Αθήνα','--phone','6912345678')).records[0]
 Check ($customer.name -eq 'Μαρία Δοκιμή') 'Unicode customer name was not preserved'
@@ -41,6 +41,24 @@ $null = Invoke-Cli -CommandArgs @('customers','delete',$customer.code,'--yes') -
 $null = Invoke-Cli -CommandArgs @('receipts','void',$receipt.code,'--reason','Λανθασμένη δοκιμαστική εγγραφή','--yes')
 $voided = (Invoke-Cli -CommandArgs @('policies','show',$policy.code)).records[0]
 Check ($voided.outstanding -eq 40 -and $voided.office_received -eq 9.6) 'Voiding did not update balances'
+$credit = (Invoke-Cli -CommandArgs @('credits','add','--policy',$policy.code,'--amount','50','--net','40','--reason','Δοκιμαστικό μερικό πιστωτικό')).records[0]
+Check ($credit.reason -eq 'Δοκιμαστικό μερικό πιστωτικό' -and $credit.amount -eq 50 -and $credit.net -eq 40) 'Credit values or Unicode reason lost'
+$creditedPolicy = (Invoke-Cli -CommandArgs @('policies','show',$policy.code)).records[0]
+Check ($creditedPolicy.chargeable -eq 50 -and $creditedPolicy.customer_credit -eq 10 -and $creditedPolicy.outstanding -eq 0 -and $creditedPolicy.office_received -eq 8) 'Credit balances or commissions incorrect'
+$null = Invoke-Cli -CommandArgs @('credits','add','--policy',$policy.code,'--amount','50.01','--reason','Over-credit') -ExpectedExit 2
+$null = Invoke-Cli -CommandArgs @('credits','void',$credit.code,'--reason','Missing confirmation') -ExpectedExit 2
+$creditCsv = Join-Path $testRoot 'credits.csv'
+$null = Invoke-Cli -CommandArgs @('export','credits','--policy',$policy.code,'--output',$creditCsv)
+Check (([IO.File]::ReadAllLines($creditCsv)).Length -eq 2) 'Credit export did not follow its filter'
+$creditBackup = Join-Path $testRoot 'with-credit.db'
+$null = Invoke-Cli -CommandArgs @('backup','--output',$creditBackup)
+$savedCredit = (Invoke-Cli -CommandArgs @('credits','show',$credit.code) -Database $creditBackup).records[0]
+Check ($savedCredit.status -eq 'posted' -and $savedCredit.amount -eq 50) 'Credit missing from backup'
+$null = Invoke-Cli -CommandArgs @('credits','void',$credit.code,'--reason','Ακύρωση δοκιμής','--yes')
+$creditHistory = Invoke-Cli -CommandArgs @('credits','history',$credit.code)
+Check ($creditHistory.count -eq 2) 'Credit audit history incomplete'
+$restored = (Invoke-Cli -CommandArgs @('policies','show',$policy.code)).records[0]
+Check ($restored.outstanding -eq 40 -and $restored.customer_credit -eq 0 -and $restored.office_received -eq 9.6) 'Voiding credit did not restore totals'
 $renewed = (Invoke-Cli -CommandArgs @('policies','renew',$policy.code,'--number','SMOKE-POL-2','--start','2027-01-01','--end','2027-12-31')).records[0]
 Check ($renewed.previous_id -eq $policy.id -and $renewed.partner_rate -eq 10) 'Renewal lost its source or rates'
 $history = Invoke-Cli -CommandArgs @('policies','history',$policy.code)
@@ -58,6 +76,6 @@ $backupPolicy = (Invoke-Cli -CommandArgs @('policies','show',$policy.code) -Data
 Check ($backupPolicy.outstanding -eq 40) 'Backup did not contain committed data'
 $summary = Invoke-Cli -CommandArgs @('summary')
 Check ($summary.records[0].currency -eq 'EUR') 'Summary currency missing'
-$report = [ordered]@{ version='0.1.0'; executable=$Executable; checks=$checks; failed=0; database=$dbFile; checkedAtUtc=[DateTime]::UtcNow.ToString('o') }
+$report = [ordered]@{ version='0.2.0'; executable=$Executable; checks=$checks; failed=0; database=$dbFile; checkedAtUtc=[DateTime]::UtcNow.ToString('o') }
 [IO.File]::WriteAllText((Join-Path $testRoot 'results.json'), ($report | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 Write-Output "PASS: $checks checks of the packaged executable. Synthetic test data and report: $testRoot"

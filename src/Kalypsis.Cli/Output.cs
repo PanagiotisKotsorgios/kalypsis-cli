@@ -9,10 +9,13 @@ public static class Output
     private static readonly CultureInfo Greek = CultureInfo.GetCultureInfo("el-GR");
     public static readonly Dictionary<string, string> Labels = new()
     {
+        ["customers"]="Πελάτες", ["insurers"]="Ασφαλιστικές", ["partners"]="Συνεργάτες", ["credits"]="Πιστωτικά",
+        ["credited"]="Πιστωτικά (μικτά)", ["credited_net"]="Πιστωτικά (καθαρά)", ["chargeable"]="Μικτά μετά τα πιστωτικά",
+        ["chargeable_net"]="Καθαρά μετά τα πιστωτικά", ["customer_credit"]="Πιστωτικό πελάτη", ["void_reason"]="Αιτία ακύρωσης εγγραφής",
         ["id"]="ID",["code"]="Κωδικός",["name"]="Ονομασία",["kind"]="Τύπος",["first_name"]="Όνομα",["last_name"]="Επώνυμο",["vat"]="ΑΦΜ",["email"]="Email",["phone"]="Τηλέφωνο",["city"]="Πόλη",
         ["number"]="Αριθμός",["customer"]="Πελάτης",["insurer"]="Ασφαλιστική",["partner"]="Συνεργάτης",["branch"]="Κλάδος",["plate"]="Πινακίδα",["start"]="Έναρξη",["end"]="Λήξη",["gross"]="Μικτά",["net"]="Καθαρά",["currency"]="Νόμισμα",
         ["commission"]="Προμήθεια %",["office_rate"]="Προμήθεια έδρας %",["partner_rate"]="Προμήθεια συνεργάτη %",["received"]="Εισπραχθέντα",["outstanding"]="Ανεξόφλητο",["office_expected"]="Προμήθεια έδρας",["office_received"]="Εισπραχθείσα προμήθεια έδρας",["partner_expected"]="Προμήθεια συνεργάτη",
-        ["policy"]="Συμβόλαιο",["policy_code"]="Κωδικός συμβολαίου",["policy_id"]="ID συμβολαίου",["customer_id"]="ID πελάτη",["insurer_id"]="ID ασφαλιστικής",["partner_id"]="ID συνεργάτη",["previous_id"]="Προηγούμενο συμβόλαιο",["date"]="Ημερομηνία",["amount"]="Ποσό",["method"]="Μέθοδος",["status"]="Κατάσταση",["reason"]="Αιτία ακύρωσης",["created_at"]="Δημιουργήθηκε",["action"]="Ενέργεια",["occurred_at"]="Ημερομηνία ενέργειας",["before_json"]="Πριν",["after_json"]="Μετά",["policies"]="Συμβόλαια",["active_policies"]="Ενεργά συμβόλαια",["path"]="Αρχείο"
+        ["policy"]="Συμβόλαιο",["policy_code"]="Κωδικός συμβολαίου",["policy_id"]="ID συμβολαίου",["customer_id"]="ID πελάτη",["insurer_id"]="ID ασφαλιστικής",["partner_id"]="ID συνεργάτη",["previous_id"]="Προηγούμενο συμβόλαιο",["date"]="Ημερομηνία",["amount"]="Ποσό",["method"]="Μέθοδος",["status"]="Κατάσταση",["reason"]="Αιτιολογία",["created_at"]="Δημιουργήθηκε",["action"]="Ενέργεια",["occurred_at"]="Ημερομηνία ενέργειας",["before_json"]="Πριν",["after_json"]="Μετά",["policies"]="Συμβόλαια",["active_policies"]="Ενεργά συμβόλαια",["path"]="Αρχείο"
     };
     public static string Value(object? value)
     {
@@ -21,16 +24,17 @@ public static class Output
         var text = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
         return string.Concat(text.Select(character => char.IsControl(character) ? ' ' : character));
     }
-    private static string Display(string key, object? value)
+    internal static string Display(string key, object? value)
     {
         if (key is "kind" or "status" or "method" or "action") return Convert.ToString(value, CultureInfo.InvariantCulture) switch
         {
-            "person"=>"Φυσικό πρόσωπο", "company"=>"Νομικό πρόσωπο", "active"=>"Ενεργό", "expired"=>"Ληγμένο", "scheduled"=>"Μελλοντικό", "cancelled"=>"Ακυρωμένο", "renewed"=>"Ανανεωμένο", "posted"=>"Καταχωρημένη", "void"=>"Ακύρωση είσπραξης", "cash"=>"Μετρητά", "bank"=>"Τράπεζα", "card"=>"Κάρτα", "other"=>"Άλλο", "create"=>"Δημιουργία", "update"=>"Επεξεργασία", "delete"=>"Διαγραφή", "cancel"=>"Ακύρωση συμβολαίου", "renewal"=>"Ανανέωση", _=>Value(value)
+            "person"=>"Φυσικό πρόσωπο", "company"=>"Νομικό πρόσωπο", "active"=>"Ενεργό", "expired"=>"Ληγμένο", "scheduled"=>"Μελλοντικό", "cancelled"=>"Ακυρωμένο", "renewed"=>"Ανανεωμένο", "posted"=>"Καταχωρημένη", "void"=>"Ακυρωμένη εγγραφή", "cash"=>"Μετρητά", "bank"=>"Τράπεζα", "card"=>"Κάρτα", "other"=>"Άλλο", "create"=>"Δημιουργία", "update"=>"Επεξεργασία", "delete"=>"Διαγραφή", "cancel"=>"Ακύρωση συμβολαίου", "renewal"=>"Ανανέωση", _=>Value(value)
         };
         return Value(value);
     }
     public static void Write(TextWriter output, CommandResult result, string entity = "", bool detail = false)
     {
+        if (TerminalUi.IsLive(output)) { new TerminalUi(output).Result(result, entity, detail); return; }
         output.WriteLine(result.Message);
         if (result.Records.Count == 0) { output.WriteLine("Δεν υπάρχουν εγγραφές."); return; }
         if (detail)
@@ -44,6 +48,7 @@ public static class Output
             "insurers" or "partners" => ["code", "name", "phone", "email"],
             "policies" => ["code", "number", "customer", "gross", "currency", "status"],
             "receipts" => ["code", "policy", "amount", "currency", "date", "status"],
+            "credits" => ["code", "policy", "amount", "net", "currency", "status"],
             "summary" => ["currency", "active_policies", "gross", "received", "outstanding", "office_received"],
             _ => result.Records[0].Keys.ToArray()
         };

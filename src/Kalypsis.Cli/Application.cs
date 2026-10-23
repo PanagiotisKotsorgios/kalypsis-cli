@@ -6,7 +6,7 @@ namespace Kalypsis.Cli;
 
 public static class Application
 {
-    public const string Version = "0.1.0";
+    public const string Version = "0.2.0";
     public static string DefaultDatabase => Environment.GetEnvironmentVariable("KALYPSIS_CLI_DB")
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KalypsisCli", "backoffice.db");
     public static int Run(string[] args, TextReader input, TextWriter output, TextWriter error, bool interactive = false)
@@ -22,7 +22,7 @@ public static class Application
             {
                 parsed.Validate([], 0);
                 if (!interactive) { output.WriteLine(Help); return 0; }
-                Menu(parsed.Options.GetValueOrDefault("db", DefaultDatabase), input, output, error); return 0;
+                InteractiveShell.Run(parsed.Options.GetValueOrDefault("db", DefaultDatabase), input, output, error); return 0;
             }
             var command = parsed.Words[0];
             if (command is "init" or "summary") parsed.Validate([], 1);
@@ -57,6 +57,7 @@ public static class Application
                         "add" => new("Η εγγραφή αποθηκεύτηκε.", [service.Add(category, parsed.Options)]),
                         "update" => new("Οι αλλαγές αποθηκεύτηκαν.", [service.Update(category, reference, parsed.Options)]),
                         "delete" => Delete(service, category, reference, parsed),
+                        "void" when category == "credits" => new("Το πιστωτικό ακυρώθηκε· το ιστορικό διατηρήθηκε.", [service.VoidCredit(reference, Required(parsed, "reason"))]),
                         "void" => new("Η είσπραξη ακυρώθηκε· το ιστορικό διατηρήθηκε.", [service.VoidReceipt(reference, Required(parsed, "reason"))]),
                         "cancel" => new("Το συμβόλαιο ακυρώθηκε. Δεν καταχωρήθηκε επιστροφή χρημάτων.", [service.CancelPolicy(reference, Required(parsed, "reason"))]),
                         "renew" => new("Η ανανέωση αποθηκεύτηκε με σύνδεση στο προηγούμενο συμβόλαιο.", [service.Renew(reference, parsed.Options)]),
@@ -85,6 +86,7 @@ public static class Application
         int Failure(string message, int code)
         {
             if (json) error.WriteLine(JsonSerializer.Serialize(new { success = false, error = message, exitCode = code }));
+            else if (TerminalUi.IsLive(error)) new TerminalUi(error).Notice(message, false);
             else error.WriteLine("Σφάλμα: " + message);
             return code;
         }
@@ -107,12 +109,12 @@ public static class Application
             case "show" or "history": parsed.Validate([], 3); break;
             case "add": parsed.Validate(Arguments.Fields(entity).Append("code"), 2); break;
             case "update":
-                if (entity == "receipts") throw new UserError("Χρησιμοποιήστε receipts void και νέα καταχώρηση.");
+                if (entity is "receipts" or "credits") throw new UserError("Χρησιμοποιήστε void και νέα καταχώρηση.");
                 parsed.Validate(Arguments.Fields(entity), 3);
                 if (!Arguments.Fields(entity).Any(parsed.Options.ContainsKey)) throw new UserError("Δώστε τουλάχιστον ένα πεδίο για αλλαγή.");
                 break;
             case "delete": parsed.Validate(["yes"], 3); RequireYes(parsed); break;
-            case "void" when entity == "receipts": parsed.Validate(["reason", "yes"], 3); RequireYes(parsed); break;
+            case "void" when entity is "receipts" or "credits": parsed.Validate(["reason", "yes"], 3); RequireYes(parsed); break;
             case "cancel" when entity == "policies": parsed.Validate(["reason", "yes"], 3); RequireYes(parsed); break;
             case "renew" when entity == "policies": parsed.Validate(["number", "start", "end", "gross", "net", "office-rate", "partner-rate"], 3); break;
             default: throw new UserError("Μη υποστηριζόμενη ενέργεια. Εκτελέστε kalypsis help.");
@@ -120,7 +122,7 @@ public static class Application
     }
 
     public const string Help = """
-        KALYPSIS CLI 0.1.0 — Backoffice MVP
+        KALYPSIS CLI 0.2.0 — Backoffice MVP
 
         Χρήση: kalypsis <εντολή> [επιλογές]
         Χωρίς ορίσματα: διαδραστικό μενού.
@@ -130,6 +132,7 @@ public static class Application
         customers|insurers|partners        Πελάτες, ασφαλιστικές, συνεργάτες
         policies                          Συμβόλαια
         receipts                          Πραγματικές εισπράξεις
+        credits                           Πιστωτικά συμβολαίων
 
         <οντότητα> list [--search κείμενο] [--limit 50]
         <οντότητα> show <ID ή κωδικός>
@@ -157,6 +160,10 @@ public static class Application
           [--number R123 --method cash|bank|card|other]
         receipts list [--policy ... --from ... --to ... --status posted|void]
         receipts void R-000001 --reason "Λανθασμένη εγγραφή" --yes
+        credits add --policy P-000001 --amount 20 [--net 16]
+          --reason "Αιτιολογία πιστωτικού" [--number CN123 --date yyyy-MM-dd]
+        credits list [--policy ... --from ... --to ... --status posted|void]
+        credits void CR-000001 --reason "Διόρθωση" --yes
         export <οντότητα> --output αρχείο.csv [φίλτρα λίστας]
         backup --output αντίγραφο.db
 
@@ -165,53 +172,8 @@ public static class Application
         --office-rate: ποσοστό που κρατά το γραφείο επί των καθαρών.
         Οι εξαγωγές περιλαμβάνουν όλα τα αποτελέσματα των φίλτρων.
         Οι εισπράξεις διορθώνονται με void και νέα καταχώρηση.
+        Τα πιστωτικά μειώνουν χρεώσεις και αναμενόμενες προμήθειες, χωρίς αυτόματη επιστροφή χρημάτων.
         Η ακύρωση συμβολαίου δεν εκτελεί επιστροφή χρημάτων.
         """;
 
-    private static void Menu(string path, TextReader input, TextWriter output, TextWriter error)
-    {
-        output.WriteLine($"KALYPSIS CLI {Version} — Backoffice\nΤοπική βάση: {Path.GetFullPath(path)}");
-        while (true)
-        {
-            output.WriteLine("\n1 Πελάτες  2 Ασφαλιστικές  3 Συνεργάτες  4 Συμβόλαια  5 Εισπράξεις\n6 Σύνοψη   7 Εξαγωγή CSV  8 Αντίγραφο ασφαλείας  0 Έξοδος");
-            output.Write("Επιλογή: "); var choice = input.ReadLine(); if (choice is null or "0") return;
-            var args = new List<string>();
-            if (choice == "6") args.Add("summary");
-            else if (choice is "7" or "8")
-            {
-                args.Add(choice == "7" ? "export" : "backup");
-                if (choice == "7") { output.Write("Οντότητα (customers/insurers/partners/policies/receipts): "); args.Add(input.ReadLine() ?? ""); }
-                output.Write("Νέο αρχείο προορισμού: "); args.AddRange(["--output", input.ReadLine() ?? ""]);
-            }
-            else if (int.TryParse(choice, out var index) && index is >= 1 and <= 5)
-            {
-                var entity = Backoffice.Entities[index - 1];
-                output.WriteLine(entity == "receipts" ? "1 Λίστα  2 Νέα εγγραφή  3 Προβολή  5 Ακύρωση είσπραξης  0 Επιστροφή" : "1 Λίστα  2 Νέα εγγραφή  3 Προβολή  4 Επεξεργασία  5 Διαγραφή  0 Επιστροφή");
-                output.Write("Ενέργεια: "); var action = input.ReadLine(); if (action is null) return; if (action == "0") continue;
-                var verb = action switch { "1" => "list", "2" => "add", "3" => "show", "4" => "update", "5" => entity == "receipts" ? "void" : "delete", _ => "" };
-                if (verb == "") continue; args.AddRange([entity, verb]);
-                if (verb is "show" or "update" or "delete" or "void") { output.Write("ID ή κωδικός: "); args.Add(input.ReadLine() ?? ""); }
-                if (verb is "delete" or "void")
-                {
-                    output.Write("Επιβεβαίωση (ναι): "); if (input.ReadLine()?.Trim().ToLowerInvariant() is not ("ναι" or "yes")) continue;
-                    args.Add("--yes"); if (verb == "void") { output.Write("Αιτία: "); args.AddRange(["--reason", input.ReadLine() ?? ""]); }
-                }
-                if (verb is "add" or "update")
-                {
-                    output.WriteLine("Αφήστε κενά τα προαιρετικά πεδία. Στην επεξεργασία δώστε μόνο τις αλλαγές.");
-                    foreach (var field in Arguments.Fields(entity))
-                    {
-                        output.Write($"{Prompt(field)}: "); var value = input.ReadLine(); if (value is null) return;
-                        if (value.Length > 0) args.AddRange(["--" + field, value]);
-                    }
-                }
-            }
-            else continue;
-            args.AddRange(["--db", path]); Run(args.ToArray(), input, output, error);
-        }
-    }
-    private static string Prompt(string field) => field switch
-    {
-        "kind"=>"Τύπος (person=φυσικό, company=νομικό, κενό=φυσικό)", "first-name"=>"Όνομα", "last-name"=>"Επώνυμο", "name"=>"Επωνυμία / ονοματεπώνυμο", "customer"=>"Κωδικός πελάτη", "insurer"=>"Κωδικός ασφαλιστικής", "partner"=>"Κωδικός συνεργάτη", "policy"=>"Κωδικός συμβολαίου", "office-rate"=>"Προμήθεια έδρας %", "partner-rate"=>"Προμήθεια συνεργάτη %", "date" or "start" or "end"=>Output.Labels.GetValueOrDefault(field,field)+" (yyyy-MM-dd)", _=>Output.Labels.GetValueOrDefault(field,field)
-    };
 }

@@ -34,11 +34,21 @@ public sealed class Database : IDisposable
             var version = Convert.ToInt64(Scalar("PRAGMA user_version"));
             if (appId != ApplicationId && (appId != 0 || Convert.ToInt64(Scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")) > 0))
                 throw new UserError("Το αρχείο δεν είναι βάση KALYPSIS CLI. Δεν έγιναν αλλαγές.");
-            if (version > 1) throw new UserError("Η βάση δημιουργήθηκε από νεότερη έκδοση. Αναβαθμίστε το CLI.");
+            if (version > 2) throw new UserError("Η βάση δημιουργήθηκε από νεότερη έκδοση. Αναβαθμίστε το CLI.");
             if (appId == ApplicationId && version == 0) throw new UserError("Η βάση δεν έχει έγκυρη έκδοση σχήματος.");
             if (appId == 0)
             {
                 Atomic(() => { Execute(Schema); Execute($"PRAGMA application_id={ApplicationId}; PRAGMA user_version=1;"); return 0; });
+            }
+            if (version < 2)
+            {
+                if (appId == ApplicationId)
+                    Backup(Path + ".schema-v1-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..6] + ".db");
+                Atomic(() => {
+                    if (Convert.ToInt64(Scalar("PRAGMA user_version")) < 2)
+                    { Execute(CreditSchema); Execute("PRAGMA user_version=2;"); }
+                    return 0;
+                });
             }
             Execute("PRAGMA journal_mode=WAL;");
         }
@@ -107,6 +117,14 @@ public sealed class Database : IDisposable
         backup.Open(); connection.BackupDatabase(backup);
     }
     public void Dispose() => connection.Dispose();
+
+    private const string CreditSchema = """
+        CREATE TABLE credits(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL COLLATE NOCASE UNIQUE,number TEXT NOT NULL UNIQUE,policy_id INTEGER NOT NULL REFERENCES policies(id) ON DELETE RESTRICT,date TEXT NOT NULL,amount_cents INTEGER NOT NULL CHECK(amount_cents>0),net_cents INTEGER NOT NULL CHECK(net_cents>=0 AND net_cents<=amount_cents),reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN('posted','void')),void_reason TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
+        CREATE INDEX ix_credit_policy ON credits(policy_id);
+        DROP VIEW policy_records;
+        CREATE VIEW policy_records AS SELECT p.*,c.name AS customer,i.name AS insurer,a.name AS partner,COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) AS received_cents,COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited_cents,COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited_net_cents FROM policies p JOIN customers c ON c.id=p.customer_id JOIN insurers i ON i.id=p.insurer_id LEFT JOIN partners a ON a.id=p.partner_id;
+        CREATE VIEW credit_records AS SELECT cr.*,p.code AS policy_code,p.number AS policy,c.name AS customer,p.currency FROM credits cr JOIN policies p ON p.id=cr.policy_id JOIN customers c ON c.id=p.customer_id;
+        """;
 
     private const string Schema = """
         CREATE TABLE customers(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL COLLATE NOCASE UNIQUE,kind TEXT NOT NULL CHECK(kind IN('person','company')),first_name TEXT NOT NULL DEFAULT '',last_name TEXT NOT NULL DEFAULT '',name TEXT NOT NULL,vat TEXT NOT NULL DEFAULT '',phone TEXT NOT NULL DEFAULT '',email TEXT NOT NULL DEFAULT '',city TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);

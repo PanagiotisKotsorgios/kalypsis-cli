@@ -1,4 +1,16 @@
-# KALYPSIS CLI 0.1.0 — Backoffice guide
+# KALYPSIS CLI 0.2.0 — Backoffice guide
+
+The interactive menu now has separate screens, colored actions, table views,
+pagination and search. Lists use `N` / `P` for pages, `F` for keyword search,
+`C` to clear it, a record code to open details and `0` to return. Press Enter
+after an action to return to its menu. History, renewal and cancellation use
+the same existing backoffice rules as the commands below.
+
+Red/white highlights indicate unpaid balances, cancellations and credit/negative
+values. The credits module records actual partial or full policy credit notes.
+Colors stay out of JSON, CSV and redirected output. Set `NO_COLOR=1` or
+`TERM=dumb` to disable them. Demo data is never bundled; the optional
+`KALYPSIS_CLI_DEMO=1` flag only labels a locally prepared presentation database.
 
 [English](USAGE.md) · [Ελληνικά](USAGE.el.md)
 
@@ -34,7 +46,7 @@ Opening an unrelated SQLite database is rejected instead of adopting its tables.
 ```
 
 Generated code prefixes: `C-` customers, `I-` insurers, `A-` partners, `P-` policies,
-`R-` receipts. Every entity also has a numeric ID. Numeric IDs take precedence if
+`R-` receipts, `CR-` credit notes. Every entity also has a numeric ID. Numeric IDs take precedence if
 a custom code is numeric. Optional `--code` is accepted at creation; codes cannot
 be changed later. `--commission` is the partner's default percentage for new policies.
 
@@ -97,6 +109,30 @@ includes historical receipts even if a policy is later cancelled. Active count
 includes only currently effective policies. Historical production includes renewals.
 Partner payout settlement is outside this MVP.
 
+## Credit notes
+
+```powershell
+.\kalypsis.exe credits add --policy P-000001 --amount 20 --net 16 --reason "Premium correction"
+.\kalypsis.exe credits list --policy P-000001 --status posted
+.\kalypsis.exe credits show CR-000001
+.\kalypsis.exe credits void CR-000001 --reason "Incorrect entry" --yes
+.\kalypsis.exe credits history CR-000001
+.\kalypsis.exe export credits --policy P-000001 --output credits.csv
+```
+
+The positive `--amount` is the gross credit. Optional `--net` defaults to the
+policy's net/gross ratio; the final full credit reconciles remaining cents.
+Cumulative posted credits cannot exceed the original gross or net premium.
+Currency and customer come from the policy. Credits reduce chargeable premium
+and expected commissions. If receipts exceed the reduced premium, the difference
+is shown as customer credit: **no cash refund or bank transfer is performed**.
+Credits cannot be edited or deleted; void an incorrect entry with a reason and
+create a replacement. Both the original reason and void reason remain in history.
+
+On opening a 0.1.0 database, the CLI creates a `.schema-v1-*.db` backup alongside
+it before upgrading transactionally to schema 2. Keep this backup; version 0.1.0
+cannot open the upgraded database.
+
 ## Export, backup and history
 
 ```powershell
@@ -113,7 +149,7 @@ data, rather than copying a possibly open database file. Open the backup with
 `--db <backup.db>` to verify it; there is no destructive restore command.
 
 Customers, insurers and partners with policies cannot be deleted. Policies with
-receipts (including void entries) or renewal links cannot be deleted. Unlinked
+receipts, credit notes (including void entries) or renewal links cannot be deleted. Unlinked
 mistaken entries can be deleted with `--yes`. Receipt changes use void + a new
 entry. Audits retain before/after snapshots, including after an unlinked deletion.
 

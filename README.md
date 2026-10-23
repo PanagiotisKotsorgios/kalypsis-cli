@@ -12,23 +12,31 @@
 
 [Website](https://mykalypsis.gr/) · [Repository](https://github.com/PanagiotisKotsorgios/kalypsis-cli) · [Contribute](CONTRIBUTING.md) · [Issues](https://github.com/PanagiotisKotsorgios/kalypsis-cli/issues)
 
-**KALYPSIS CLI 0.1.0** is a small, standalone insurance-office backoffice for the
+**KALYPSIS CLI 0.2.0** is a small, standalone insurance-office backoffice for the
 Windows terminal, written in **C# / .NET 10**, with a local **SQLite** database.
 It works offline without a KALYPSIS Cloud account or a separate database server.
 
 ## Current status
 
-The **initial MVP release** includes only the core backoffice workflow:
+The **0.2.0 terminal prototype** includes the core backoffice workflow:
 
 - Customers, insurance companies and partners: create, search, view, update and delete unlinked records.
 - Policies: gross/net premiums, customer/company/partner links, commission percentages, renewal history and cancellation status.
 - Receipts: partial or full collection, overpayment protection, and voiding incorrect entries with an audit trail.
+- Credit notes: partial or full policy credits, gross/net reconciliation, customer credit balances and auditable voiding.
 - Financial summary by currency, filtered UTF-8 CSV exports and consistent database backups.
 - Greek interactive menu and console messages; scriptable commands with `--json` and predictable exit codes.
+- Navy KALYPSIS screens, colored actions and tables, paged/searchable lists, record views and financial warnings.
+
+Interactive screens clear between actions and pause after results. Use `N`/`P` to
+page, `F` to search, `C` to clear search and a record code to open its details.
+Colors are disabled for redirected output, JSON, `NO_COLOR` and `TERM=dumb`.
+Credit notes have a separate ledger and red/white financial indicators. Existing
+0.1.0 databases are backed up automatically before the schema upgrade.
 
 ## Download and run
 
-Download **[kalypsis-cli-0.1.0-win-x64.zip](https://github.com/PanagiotisKotsorgios/kalypsis-cli/releases/latest/download/kalypsis-cli-0.1.0-win-x64.zip)**
+Download **[kalypsis-cli-0.2.0-win-x64.zip](https://github.com/PanagiotisKotsorgios/kalypsis-cli/releases/latest/download/kalypsis-cli-0.2.0-win-x64.zip)**
 from the [latest release](https://github.com/PanagiotisKotsorgios/kalypsis-cli/releases/latest), extract it, open PowerShell in the extracted folder and run:
 
 ```powershell

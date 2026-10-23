@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.2.0',
     [string]$OutputDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -44,7 +44,7 @@ foreach ($notice in @('LICENSE.TXT','THIRD-PARTY-NOTICES.TXT')) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $licenses "dotnet-$notice")
 }
 [IO.File]::WriteAllText((Join-Path $publishRoot 'README.txt'), @'
-KALYPSIS CLI - Initial backoffice MVP
+KALYPSIS CLI - Backoffice terminal prototype
 
 Open PowerShell in this folder and run .\kalypsis.exe for the interactive menu.
 Run .\kalypsis.exe --help for commands. No .NET installation is required.
@@ -52,7 +52,7 @@ Greek guide: USAGE.el.md. English guide: USAGE.md.
 Default data: %LOCALAPPDATA%\KalypsisCli\backoffice.db (created on first data command).
 Use --db <path> for another database. Releases contain no customer data.
 Licences and component notices are in THIRD-PARTY-NOTICES.md and licenses/.
-This initial executable is unsigned; Windows may show a publisher warning.
+This executable is unsigned; Windows may show a publisher warning.
 '@, [Text.UTF8Encoding]::new($true))
 $unexpected = Get-ChildItem -LiteralPath $publishRoot -Recurse -File | Where-Object { $_.Extension -in @('.db','.sqlite','.pfx','.csv','.pdb') -or $_.Name -match '^appsettings|password|credentials' }
 if ($unexpected) { throw 'Unexpected private/development files in the publish output.' }

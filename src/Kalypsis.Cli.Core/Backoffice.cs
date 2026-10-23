@@ -7,17 +7,18 @@ public sealed record CommandResult(string Message, IReadOnlyList<Row> Records);
 public sealed class Backoffice(Database db, DateOnly? currentDate = null)
 {
     private readonly DateOnly today = currentDate ?? DateOnly.FromDateTime(DateTime.Today);
-    public static readonly string[] Entities = ["customers", "insurers", "partners", "policies", "receipts"];
+    public static readonly string[] Entities = ["customers", "insurers", "partners", "policies", "receipts", "credits"];
+    public Row Overview() => db.Query("SELECT (SELECT COUNT(*) FROM customers) AS customers, (SELECT COUNT(*) FROM insurers) AS insurers, (SELECT COUNT(*) FROM partners) AS partners, (SELECT COUNT(*) FROM policies) AS policies, (SELECT COUNT(*) FROM receipts WHERE status='posted') AS receipts, (SELECT COUNT(*) FROM credits WHERE status='posted') AS credits").Single();
     private static string Need(IReadOnlyDictionary<string, string> fields, string key) =>
         fields.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : throw new UserError($"Λείπει η επιλογή --{key}.");
 
     public static string Entity(string value) => value switch
     {
         "customer" or "clients" => "customers", "insurer" or "companies" => "insurers", "partner" or "producers" => "partners",
-        "policy" => "policies", "receipt" => "receipts", _ when Entities.Contains(value) => value,
-        _ => throw new UserError("Επιλέξτε customers, insurers, partners, policies ή receipts.")
+        "policy" => "policies", "receipt" => "receipts", "credit" or "credit-notes" or "creditnotes" => "credits", _ when Entities.Contains(value) => value,
+        _ => throw new UserError("Επιλέξτε customers, insurers, partners, policies, receipts ή credits.")
     };
-    private static string View(string entity) => entity switch { "policies" => "policy_records", "receipts" => "receipt_records", _ => entity };
+    private static string View(string entity) => entity switch { "policies" => "policy_records", "receipts" => "receipt_records", "credits" => "credit_records", _ => entity };
 
     public Row Show(string entity, string reference)
     {
@@ -39,6 +40,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
                 "customers" => new[] { "code", "name", "vat", "phone", "email", "city" },
                 "policies" => ["code", "number", "customer", "insurer", "partner", "branch", "plate"],
                 "receipts" => ["code", "number", "policy", "policy_code", "customer"],
+                "credits" => ["code", "number", "policy", "policy_code", "customer", "reason"],
                 _ => ["code", "name", "phone", "email"]
             };
             clauses.Add("(" + string.Join(" OR ", columns.Select(column => $"contains_text({column},$search)")) + ")");
@@ -88,6 +90,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
             case "partners": fields = PartyFields(options, true); prefix = "A"; break;
             case "policies": fields = PolicyFields(options, null); prefix = "P"; break;
             case "receipts": fields = ReceiptFields(options); prefix = "R"; break;
+            case "credits": fields = CreditFields(options); prefix = "CR"; break;
             default: throw new UserError("Μη υποστηριζόμενη εγγραφή.");
         }
         var id = db.Insert(entity, fields, prefix); var row = Show(entity, id.ToString(CultureInfo.InvariantCulture));
@@ -97,7 +100,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     public Row Update(string entity, string reference, IReadOnlyDictionary<string, string> options) => db.Atomic(() =>
     {
         entity = Entity(entity);
-        if (entity == "receipts") throw new UserError("Οι εισπράξεις δεν τροποποιούνται. Χρησιμοποιήστε receipts void και καταχωρήστε νέα είσπραξη.");
+        if (entity is "receipts" or "credits") throw new UserError("Οι οικονομικές εγγραφές δεν τροποποιούνται. Χρησιμοποιήστε void και νέα καταχώρηση.");
         var before = Show(entity, reference);
         var fields = entity switch { "customers" => CustomerFields(options, before), "policies" => PolicyFields(options, before), _ => PartyFields(options, entity == "partners", before) };
         db.Update(entity, before.Id, fields); var after = Show(entity, reference);
@@ -107,16 +110,16 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     public void Delete(string entity, string reference) => db.Atomic(() =>
     {
         entity = Entity(entity);
-        if (entity == "receipts") throw new UserError("Χρησιμοποιήστε receipts void για ακύρωση λανθασμένης είσπραξης.");
+        if (entity is "receipts" or "credits") throw new UserError("Χρησιμοποιήστε void για ακύρωση λανθασμένης οικονομικής εγγραφής· το ιστορικό διατηρείται.");
         var before = Show(entity, reference);
         var count = entity switch
         {
             "customers" => db.Scalar("SELECT COUNT(*) FROM policies WHERE customer_id=$id", ("$id", before.Id)),
             "insurers" => db.Scalar("SELECT COUNT(*) FROM policies WHERE insurer_id=$id", ("$id", before.Id)),
             "partners" => db.Scalar("SELECT COUNT(*) FROM policies WHERE partner_id=$id", ("$id", before.Id)),
-            _ => db.Scalar("SELECT (SELECT COUNT(*) FROM receipts WHERE policy_id=$id)+(SELECT COUNT(*) FROM policies WHERE previous_id=$id OR (id=$id AND previous_id IS NOT NULL))", ("$id", before.Id))
+            _ => db.Scalar("SELECT (SELECT COUNT(*) FROM receipts WHERE policy_id=$id)+(SELECT COUNT(*) FROM credits WHERE policy_id=$id)+(SELECT COUNT(*) FROM policies WHERE previous_id=$id OR (id=$id AND previous_id IS NOT NULL))", ("$id", before.Id))
         };
-        if (Convert.ToInt64(count) > 0) throw new UserError("Η διαγραφή δεν επιτρέπεται: υπάρχουν συνδεδεμένα συμβόλαια, εισπράξεις ή ιστορικό ανανεώσεων. Διαχειριστείτε πρώτα τις διασυνδέσεις.");
+        if (Convert.ToInt64(count) > 0) throw new UserError("Η διαγραφή δεν επιτρέπεται: υπάρχουν συνδεδεμένα συμβόλαια, εισπράξεις, πιστωτικά ή ιστορικό ανανεώσεων. Διαχειριστείτε πρώτα τις διασυνδέσεις.");
         db.Execute($"DELETE FROM {entity} WHERE id=$id", ("$id", before.Id)); db.Audit(entity, before.Id, "delete", before, null); return 0;
     });
 
@@ -127,6 +130,14 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
         var text = Validation.Text(reason, "Αιτία ακύρωσης", 500, true);
         db.Update("receipts", before.Id, new() { ["status"] = "void", ["reason"] = text });
         var after = Show("receipts", reference); db.Audit("receipts", before.Id, "void", before, after); return after;
+    });
+
+    public Row VoidCredit(string reference, string reason) => db.Atomic(() =>
+    {
+        var before = Show("credits", reference);
+        if (before.Text("status") == "void") throw new UserError("Το πιστωτικό είναι ήδη ακυρωμένο.");
+        db.Update("credits", before.Id, new() { ["status"] = "void", ["void_reason"] = Validation.Text(reason, "Αιτία ακύρωσης", 500, true) });
+        var after = Show("credits", reference); db.Audit("credits", before.Id, "void", before, after); return after;
     });
 
     public Row CancelPolicy(string reference, string reason) => db.Atomic(() =>
@@ -183,6 +194,8 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
             return new Row { ["currency"] = group.Key, ["policies"] = group.Count(), ["active_policies"] = group.Count(row => row.Text("status") == "active"),
                 ["gross"] = production.Sum(row => row.Number("gross")), ["net"] = production.Sum(row => row.Number("net")),
                 ["received"] = group.Sum(row => row.Number("received")), ["outstanding"] = production.Sum(row => row.Number("outstanding")),
+                ["credited"] = group.Sum(row => row.Number("credited")), ["credited_net"] = group.Sum(row => row.Number("credited_net")),
+                ["chargeable"] = production.Sum(row => row.Number("chargeable")), ["customer_credit"] = group.Sum(row => row.Number("customer_credit")),
                 ["office_received"] = production.Sum(row => row.Number("office_received")) };
         }).ToList();
     }
@@ -221,11 +234,13 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
         var start = Validation.Date(Value("start")); var end = Validation.Date(Value("end"));
         if (string.CompareOrdinal(start, end) > 0) throw new UserError("Η λήξη πρέπει να είναι ίση ή μεταγενέστερη της έναρξης.");
         var currency = Validation.Currency(Value("currency", "EUR"));
-        if (before is not null && Convert.ToInt64(db.Scalar("SELECT COUNT(*) FROM receipts WHERE policy_id=$id", ("$id", before.Id))) > 0)
+        if (before is not null && Convert.ToInt64(db.Scalar("SELECT (SELECT COUNT(*) FROM receipts WHERE policy_id=$id)+(SELECT COUNT(*) FROM credits WHERE policy_id=$id)", ("$id", before.Id))) > 0)
         {
             if (customer.Id != Convert.ToInt64(before["customer_id"]) || insurer.Id != Convert.ToInt64(before["insurer_id"]) || currency != before.Text("currency")
-                || !Equals(partner?.Id, before["partner_id"]) || gross / 100m < before.Number("received"))
-                throw new UserError("Οι καταχωρημένες εισπράξεις δεν επιτρέπουν αυτή την αλλαγή μερών, νομίσματος ή μικτών ασφαλίστρων.");
+                || !Equals(partner?.Id, before["partner_id"]) || gross / 100m < before.Number("gross") && gross / 100m < before.Number("received") + before.Number("credited")
+                || before.Number("credited") > gross / 100m || before.Number("credited_net") > net / 100m
+                || net / 100m - before.Number("credited_net") > gross / 100m - before.Number("credited"))
+                throw new UserError("Οι καταχωρημένες εισπράξεις ή τα πιστωτικά δεν επιτρέπουν αυτή την αλλαγή μερών, νομίσματος ή ασφαλίστρων.");
         }
         return new() { ["number"] = Validation.Text(Value("number"), "Αριθμός συμβολαίου", 80, true), ["customer_id"] = customer.Id, ["insurer_id"] = insurer.Id,
             ["partner_id"] = partner?.Id, ["branch"] = Validation.Text(Value("branch"), "Κλάδος", 100), ["plate"] = Validation.Text(Value("plate"), "Πινακίδα", 20),
@@ -245,10 +260,31 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     private Row EnrichPolicy(Row row)
     {
         if (row.Text("status") == "active") row["status"] = string.CompareOrdinal(row.Text("end"), today.ToString("yyyy-MM-dd")) < 0 ? "expired" : string.CompareOrdinal(row.Text("start"), today.ToString("yyyy-MM-dd")) > 0 ? "scheduled" : "active";
-        row["outstanding"] = Math.Max(0, row.Number("gross") - row.Number("received"));
-        row["office_expected"] = Math.Round(row.Number("net") * row.Number("office_rate") / 100m, 2, MidpointRounding.AwayFromZero);
-        row["partner_expected"] = Math.Round(row.Number("net") * row.Number("partner_rate") / 100m, 2, MidpointRounding.AwayFromZero);
-        row["office_received"] = Math.Round(row.Number("office_expected") * Math.Clamp(row.Number("received") / row.Number("gross"), 0m, 1m), 2, MidpointRounding.AwayFromZero);
+        row["chargeable"] = row.Number("gross") - row.Number("credited");
+        row["chargeable_net"] = row.Number("net") - row.Number("credited_net");
+        row["outstanding"] = Math.Max(0, row.Number("chargeable") - row.Number("received"));
+        row["customer_credit"] = Math.Max(0, row.Number("received") - row.Number("chargeable"));
+        row["office_expected"] = Math.Round(row.Number("chargeable_net") * row.Number("office_rate") / 100m, 2, MidpointRounding.AwayFromZero);
+        row["partner_expected"] = Math.Round(row.Number("chargeable_net") * row.Number("partner_rate") / 100m, 2, MidpointRounding.AwayFromZero);
+        row["office_received"] = row.Number("chargeable") == 0 ? 0m : Math.Round(row.Number("office_expected") * Math.Clamp(row.Number("received") / row.Number("chargeable"), 0m, 1m), 2, MidpointRounding.AwayFromZero);
         return row;
+    }
+
+    private Dictionary<string, object?> CreditFields(IReadOnlyDictionary<string, string> options)
+    {
+        var policy = Show("policies", Need(options, "policy"));
+        var amount = Validation.Money(Need(options, "amount"), true);
+        var available = policy.Number("gross") - policy.Number("credited");
+        if (amount / 100m > available) throw new UserError("Τα πιστωτικά δεν επιτρέπεται να υπερβαίνουν τα αρχικά μικτά ασφάλιστρα.");
+        var availableNet = policy.Number("net") - policy.Number("credited_net");
+        var net = options.TryGetValue("net", out var raw) ? Validation.Money(raw) / 100m
+            : amount / 100m == available ? availableNet : Math.Round(amount / 100m * policy.Number("net") / policy.Number("gross"), 2, MidpointRounding.AwayFromZero);
+        if (net > amount / 100m || net > availableNet || availableNet - net > available - amount / 100m)
+            throw new UserError("Μη έγκυρα καθαρά πιστωτικού: ελέγξτε τα διαθέσιμα μικτά και καθαρά ασφάλιστρα.");
+        return new() { ["code"] = Validation.Text(options.GetValueOrDefault("code"), "Κωδικός", 40), ["policy_id"] = policy.Id,
+            ["amount_cents"] = amount, ["net_cents"] = checked((long)(net * 100)),
+            ["date"] = Validation.Date(options.GetValueOrDefault("date", today.ToString("yyyy-MM-dd"))),
+            ["number"] = Validation.Text(options.GetValueOrDefault("number", "CN-" + Guid.NewGuid().ToString("N")[..12]), "Αριθμός πιστωτικού", 40, true),
+            ["reason"] = Validation.Text(Need(options, "reason"), "Αιτία πιστωτικού", 500, true) };
     }
 }

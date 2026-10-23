@@ -20,7 +20,7 @@ public sealed class CommandTests : IDisposable
     public void Help_and_version_do_not_create_a_database()
     {
         Assert.Contains("Backoffice MVP", Run("--help").Out);
-        Assert.Equal("0.1.0", JsonDocument.Parse(Run("--version", "--json").Out).RootElement.GetProperty("version").GetString());
+        Assert.Equal(Application.Version, JsonDocument.Parse(Run("--version", "--json").Out).RootElement.GetProperty("version").GetString());
         Assert.False(File.Exists(Path.Combine(root, "office.db")));
     }
     [Fact]

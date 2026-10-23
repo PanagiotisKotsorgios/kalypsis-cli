@@ -42,11 +42,12 @@ public sealed record Arguments(List<string> Words, Dictionary<string, string> Op
         "customers" => ["kind", "first-name", "last-name", "name", "vat", "email", "phone", "city"],
         "insurers" => ["name", "phone", "email"], "partners" => ["name", "phone", "email", "commission"],
         "policies" => ["number", "customer", "insurer", "partner", "branch", "plate", "start", "end", "gross", "net", "currency", "office-rate", "partner-rate"],
-        "receipts" => ["number", "policy", "date", "amount", "method"], _ => []
+        "receipts" => ["number", "policy", "date", "amount", "method"],
+        "credits" => ["number", "policy", "date", "amount", "net", "reason"], _ => []
     };
     public static string[] Filters(string entity) => entity switch
     {
         "policies" => ["search", "customer", "insurer", "partner", "from", "to", "status", "limit"],
-        "receipts" => ["search", "policy", "from", "to", "status", "limit"], _ => ["search", "limit"]
+        "receipts" or "credits" => ["search", "policy", "from", "to", "status", "limit"], _ => ["search", "limit"]
     };
 }
