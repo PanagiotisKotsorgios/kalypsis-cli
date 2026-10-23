@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+artifacts/
+.local/
+.vs/
+*.user
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.csv
+*.zip
+TestResults/

@@ -2,9 +2,8 @@
 
 [English](CONTRIBUTING.md) · [Ελληνικά](CONTRIBUTING.el.md)
 
-Thank you for your interest. The Windows CLI is in preparation and has not
-been implemented. These guidelines do not define an approved CLI architecture,
-feature set, delivery date or installation process.
+Thank you for your interest. The initial Windows backoffice MVP is implemented
+in C#/.NET 10 with SQLite. Keep proposed changes focused on this small scope.
 
 ## Before starting
 
@@ -34,9 +33,11 @@ Use redacted screenshots and synthetic data only.
 - Accept review feedback constructively. Merging and releases are maintained
   by the repository owner; submitting a PR does not guarantee acceptance.
 
-There are currently no project-specific build, test or install commands.
-For documentation changes, check Markdown formatting, links, both languages,
-technical accuracy and consistency with the project's unimplemented status.
+Build with `dotnet build Kalypsis.Cli.sln -c Release` and run
+`dotnet test Kalypsis.Cli.sln -c Release`. Use only isolated temporary databases
+in tests. Cover monetary precision, transactions, relationship protection and
+CLI exit codes when modifying those areas. Use `build/Publish.ps1` to package locally.
+For documentation changes, check links, both languages and implemented behaviour.
 
 ## Privacy and responsible security reporting
 

@@ -12,18 +12,74 @@
 
 [Website](https://mykalypsis.gr/) · [Repository](https://github.com/PanagiotisKotsorgios/kalypsis-cli) · [Contribute](CONTRIBUTING.md) · [Issues](https://github.com/PanagiotisKotsorgios/kalypsis-cli/issues)
 
-**KALYPSIS CLI** is the public repository for the Windows command-line project.
-Explore its documentation, discuss ideas and help shape the project.
-Repository access is free for everyone.
+**KALYPSIS CLI 0.1.0** is a small, standalone insurance-office backoffice for the
+Windows terminal, written in **C# / .NET 10**, with a local **SQLite** database.
+It works offline without a KALYPSIS Cloud account or a separate database server.
 
 ## Current status
 
-The CLI application has **not been implemented**. This repository currently
-contains project information and contribution guidelines only. There is no
-executable, installer, release, supported command set or installation procedure.
+The **initial MVP release** includes only the core backoffice workflow:
+
+- Customers, insurance companies and partners: create, search, view, update and delete unlinked records.
+- Policies: gross/net premiums, customer/company/partner links, commission percentages, renewal history and cancellation status.
+- Receipts: partial or full collection, overpayment protection, and voiding incorrect entries with an audit trail.
+- Financial summary by currency, filtered UTF-8 CSV exports and consistent database backups.
+- Greek interactive menu and console messages; scriptable commands with `--json` and predictable exit codes.
+
+## Download and run
+
+Download **[kalypsis-cli-0.1.0-win-x64.zip](https://github.com/PanagiotisKotsorgios/kalypsis-cli/releases/latest/download/kalypsis-cli-0.1.0-win-x64.zip)**
+from the [latest release](https://github.com/PanagiotisKotsorgios/kalypsis-cli/releases/latest), extract it, open PowerShell in the extracted folder and run:
+
+```powershell
+.\kalypsis.exe
+.\kalypsis.exe --help
+.\kalypsis.exe --version
+```
+
+The Windows x64 package is self-contained; installing .NET separately is unnecessary.
+There is no installer and no administrator requirement. Keep the extracted files together.
+
+Default database: `%LOCALAPPDATA%\KalypsisCli\backoffice.db`.
+Override with `--db <path>` or the `KALYPSIS_CLI_DB` environment variable.
+Release packages contain **no customer records, sample database or credentials**.
+
+## First records
+
+```powershell
+.\kalypsis.exe customers add --first-name "Μαρία" --last-name "Δοκιμή" --phone 6912345678
+.\kalypsis.exe insurers add --name "Insurance company"
+.\kalypsis.exe policies add --number POL001 --customer C-000001 --insurer I-000001 --start 2026-01-01 --end 2026-12-31 --gross 100 --net 80 --office-rate 20
+.\kalypsis.exe receipts add --policy P-000001 --amount 50
+.\kalypsis.exe policies show P-000001
+.\kalypsis.exe summary --json
+.\kalypsis.exe export customers --output customers.csv --search "Μαρία"
+.\kalypsis.exe backup --output office-backup.db
+```
+
+Examples use synthetic names. IDs/codes are printed after creation; use your own returned codes.
+See the [English guide](docs/USAGE.md) or [Ελληνικό οδηγό](docs/USAGE.el.md) for fields, financial rules and limitations.
+
+## Build and test
+
+Requires the **.NET 10 SDK**:
+
+```powershell
+dotnet restore Kalypsis.Cli.sln
+dotnet build Kalypsis.Cli.sln -c Release --no-restore
+dotnet test Kalypsis.Cli.sln -c Release --no-build
+dotnet run --project src/Kalypsis.Cli -- --help
+powershell -ExecutionPolicy Bypass -File build/Publish.ps1
+```
+
+Packaging writes to `artifacts/releases`. The ZIP contains the executable, usage guides,
+third-party notices and checksums. Binaries and databases are not committed to Git.
+The packaging script requires a clean, committed Git checkout and a fresh output directory.
 
 KALYPSIS Web and Desktop are separate applications; this repository does not
 contain their source code or grant access to their systems or customer data.
+The MVP does not synchronise with them and does not include quotations, carrier bridges,
+claims management, messaging, payments to beneficiaries or a customer portal.
 
 ## The KALYPSIS ecosystem
 
@@ -36,7 +92,7 @@ It is not a CLI screenshot or a statement of implemented CLI features.*
 
 ## Project identity
 
-`kalypsis` · `kalypsis-subsystem` · `cli` · `windows` · `insurance` · `documentation`
+`kalypsis` · `kalypsis-subsystem` · `cli` · `windows` · `insurance` · `csharp` · `dotnet` · `sqlite`
 
 The KALYPSIS logo identifies the project ecosystem. Access to this repository
 does not grant rights to the brand or to the separate commercial applications.

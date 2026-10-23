@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
+    <Company>KALYPSIS</Company>
+    <Product>KALYPSIS CLI</Product>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>
