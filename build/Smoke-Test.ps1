@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
