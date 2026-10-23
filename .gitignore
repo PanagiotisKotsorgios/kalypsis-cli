@@ -8,6 +8,7 @@ artifacts/
 *.db-*
 *.sqlite
 *.sqlite-*
+!docs/licenses/Microsoft.Data.Sqlite-MIT.txt
 *.csv
 *.zip
 TestResults/
