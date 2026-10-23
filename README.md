@@ -89,14 +89,29 @@ contain their source code or grant access to their systems or customer data.
 The MVP does not synchronise with them and does not include quotations, carrier bridges,
 claims management, messaging, payments to beneficiaries or a customer portal.
 
-## The KALYPSIS ecosystem
+## Screenshots
 
-One connected workflow: customers, policies, vehicles, renewals and communications.
+Actual KALYPSIS CLI 0.2.0 screens with synthetic demonstration data.
 
-![KALYPSIS connected workflow — visual design reference](docs/assets/workflow-reference.png)
+### Office overview
 
-*The supplied image illustrates the KALYPSIS website's workflow design direction.
-It is not a CLI screenshot or a statement of implemented CLI features.*
+![KALYPSIS CLI office overview and backoffice menu](docs/assets/cli-office-overview.jpg)
+
+### Customers list
+
+![Searchable customers table with pagination](docs/assets/cli-customers-list.jpg)
+
+### Customer card
+
+![Customer details in the CLI](docs/assets/cli-customer-card.jpg)
+
+### Policies list
+
+![Policy table with premiums, outstanding balances and colored statuses](docs/assets/cli-policies-list.jpg)
+
+### Policy card
+
+![Policy details with premiums, credit notes and commission amounts](docs/assets/cli-policy-card.jpg)
 
 ## Project identity
 
