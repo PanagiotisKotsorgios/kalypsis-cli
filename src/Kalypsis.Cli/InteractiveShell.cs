@@ -1,3 +1,4 @@
+using System.Text;
 using Kalypsis.Cli.Core;
 
 namespace Kalypsis.Cli;
@@ -27,7 +28,7 @@ public static class InteractiveShell
                 ("[6]", "Πιστωτικά", "Ποσά, καθαρά, υπόλοιπα και ιστορικό", Tone.Red),
                 ("[7]", "Dashboard KPI", "Γραμμές, μπάρες, δραστηριότητα και οικονομικά metrics", Tone.Cyan),
                 ("[8]", "Οικονομική σύνοψη", "Ξεχωριστά σύνολα ανά νόμισμα", Tone.Cyan),
-                ("[9]", "Εξαγωγή CSV", "Φίλτρα και αρχείο συμβατό με Excel", Tone.Green),
+                ("[9]", "Εξαγωγ�� CSV", "Φίλτρα και αρχείο συμβατό με Excel", Tone.Green),
                 ("[10]", "Αντίγραφο ασφαλείας", "Ασφαλές snapshot της τοπικής βάσης", Tone.Green),
                 ("[0]", "Έξοδος", "", Tone.Muted)
             ]);
@@ -285,7 +286,7 @@ public static class InteractiveShell
                     ("[3]", "Προβολή καρτέλας", "", Tone.Cyan)
                 };
                 if (entity is not ("receipts" or "credits")) actions.Add(("[4]", "[~] Επεξεργασία", "", Tone.Amber));
-                actions.Add(("[5]", entity == "receipts" ? "[x] Ακύρωση είσπραξης" : entity == "credits" ? "[x] Ακύρωση πιστωτικού" : "[x] Διαγρα��ή", "Προσθήκη επιβεβαίωσης πριν τη διαγραφή", Tone.Red));
+                actions.Add(("[5]", entity == "receipts" ? "[x] Ακύρωση είσπραξης" : entity == "credits" ? "[x] Ακύρωση πιστωτικού" : "[x] Διαγραφή", "Προσθήκη επιβεβαίωσης πριν τη διαγραφή", Tone.Red));
                 actions.Add(("[6]", "Ιστορικό αλλαγών", "", Tone.Muted));
                 if (entity == "policies")
                 { actions.Add(("[7]", "Ανανέωση συμβολαίου", "", Tone.Green)); actions.Add(("[8]", "Ακύρωση συμβολαίου", "", Tone.Red)); }
@@ -370,7 +371,7 @@ public static class InteractiveShell
                 ui.Screen(title + " / Καρτέλα " + row.Text("code"), path);
                 var shown = new Row(); foreach (var pair in fields.Skip(page * pageSize).Take(pageSize)) shown[pair.Key] = pair.Value;
                 ui.Result(new("Στοιχεία εγγραφής", [shown]), entity, true);
-                ui.Line($"  Πεδία: σελίδα {page + 1}/{count}", Tone.Muted);
+                ui.Line($"  Σελίδα {page + 1}/{count}", Tone.Muted);
                 ui.Line("  [N] Επόμενα πεδία  [P] Προηγούμενα  [0] Πίσω", Tone.Blue);
                 ui.Prompt("Επιλογή"); var choice = input.ReadLine()?.Trim().ToUpperInvariant();
                 if (choice is null or "0" or "") return;
