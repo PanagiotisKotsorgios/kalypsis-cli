@@ -3,6 +3,7 @@ using Kalypsis.Cli.Core;
 
 namespace Kalypsis.Cli;
 
+
 public static class InteractiveShell
 {
     private static readonly string[] Names = ["Πελάτες", "Ασφαλιστικές", "Συνεργάτες", "Συμβόλαια", "Εισπράξεις", "Πιστωτικά"];
