@@ -25,7 +25,7 @@ public static class InteractiveShell
                 ("[4]", "Συμβόλαια", "Παραγωγή, υπόλοιπα, ανανεώσεις και ιστορικό", Tone.Blue),
                 ("[5]", "Εισπράξεις", "Μερικές / πλήρεις εισπράξεις και ακύρωση εγγραφών", Tone.Green),
                 ("[6]", "Πιστωτικά", "Ποσά, καθαρά, υπόλοιπα και ιστορικό", Tone.Red),
-                ("[7]", "Dashboard KPI", "Γραμμές, μπάρες και μετρήσεις αγοράς / οικονομίας", Tone.Cyan),
+                ("[7]", "Dashboard KPI", "Γραμμές, μπάρες, δραστηριότητα και οικονομικά metrics", Tone.Cyan),
                 ("[8]", "Οικονομική σύνοψη", "Ξεχωριστά σύνολα ανά νόμισμα", Tone.Cyan),
                 ("[9]", "Εξαγωγή CSV", "Φίλτρα και αρχείο συμβατό με Excel", Tone.Green),
                 ("[10]", "Αντίγραφο ασφαλείας", "Ασφαλές snapshot της τοπικής βάσης", Tone.Green),
@@ -35,7 +35,7 @@ public static class InteractiveShell
             if (choice is null or "0") { ui.Line("  Καλή συνέχεια από την KALYPSIS.", Tone.Cyan); return; }
             if (int.TryParse(choice, out var index) && index is >= 1 and <= 6)
             { Entity(Backoffice.Entities[index - 1], Names[index - 1]); continue; }
-            if (choice == "7") { Dashboard(); ui.Pause(input); }
+            if (choice == "7") { Dashboard(); }
             else if (choice == "8")
             { ui.Screen("Οικονομική σύνοψη ανά νόμισμα", path); Execute(["summary"]); ui.Pause(input); }
             else if (choice is "9" or "10")
@@ -60,9 +60,70 @@ public static class InteractiveShell
 
         void Dashboard()
         {
-            using var db = new Database(path);
-            var dashboard = new Backoffice(db).Dashboard();
-            ui.Screen("Dashboard KPI", path);
+            var compact = false;
+            while (true)
+            {
+                using var db = new Database(path);
+                var dashboard = new Backoffice(db).Dashboard();
+                ui.Screen("Dashboard KPI", path);
+                if (compact || ui.Width < 100)
+                    RenderMiniDashboard(dashboard);
+                else
+                    RenderFullDashboard(dashboard);
+
+                ui.Line();
+                ui.Line("  [1] Εκρεμείς συμβόλαια  [2] Ανεξόφλητες εισπράξεις  [3] Πιστωτικά  [4] Λήξεις  [5] Εξαγωγή  [6] Mini/Full  [0] Πίσω", Tone.Blue);
+                ui.Prompt("Dashboard");
+                var choice = input.ReadLine()?.Trim();
+                if (choice is null or "0") return;
+                switch (choice.ToUpperInvariant())
+                {
+                    case "1":
+                        DashboardList("policies", "Εκρεμείς συμβόλαια", new Dictionary<string, string>
+                        {
+                            ["limit"] = "1000",
+                            ["status"] = "active"
+                        },
+                        row => DateOnly.TryParse(row.Text("end"), out var date) && date < DateOnly.FromDateTime(DateTime.Today));
+                        break;
+                    case "2":
+                        DashboardList("receipts", "Ανεξόφλητες εισπράξεις", new Dictionary<string, string>
+                        {
+                            ["limit"] = "1000",
+                            ["status"] = "posted"
+                        }, null);
+                        break;
+                    case "3":
+                        DashboardList("credits", "Πιστωτικά σε ισχύ", new Dictionary<string, string>
+                        {
+                            ["limit"] = "1000",
+                            ["status"] = "posted"
+                        }, null);
+                        break;
+                    case "4":
+                        var today = DateOnly.FromDateTime(DateTime.Today);
+                        DashboardList("policies", "Συμβόλαια με λήξη 90 ημερών", new Dictionary<string, string>
+                        {
+                            ["limit"] = "1000",
+                            ["status"] = "active",
+                            ["from"] = today.ToString("yyyy-MM-dd"),
+                            ["to"] = today.AddDays(90).ToString("yyyy-MM-dd")
+                        }, null);
+                        break;
+                    case "5":
+                        ExportDashboardSummary();
+                        break;
+                    case "6":
+                        compact = !compact;
+                        break;
+                    default:
+                        ui.Notice("Μη έγκυρη επιλογή dashboard.", false); ui.Pause(input); break;
+                }
+            }
+        }
+
+        void RenderFullDashboard(DashboardResult dashboard)
+        {
             ui.Table(["Μετρική", "Τιμή"],
             [
                 [new TerminalCell("Εκρεμείς συμβόλαια", Tone.Muted), new TerminalCell($"{dashboard.OverduePoliciesCount} / {Output.Value(dashboard.OverduePoliciesTotal)}", Tone.Amber, true)],
@@ -106,6 +167,113 @@ public static class InteractiveShell
             }
         }
 
+        void RenderMiniDashboard(DashboardResult dashboard)
+        {
+            ui.Table(["Κλειδί", "Τιμή"],
+            [
+                [new TerminalCell("Άνεργα / σε λήξη", Tone.Muted), new TerminalCell($"{dashboard.OverduePoliciesCount}  |  {Output.Value(dashboard.OverduePoliciesTotal)}", Tone.Amber, true)],
+                [new TerminalCell("Εισπράξεις", Tone.Muted), new TerminalCell($"{dashboard.UnpaidReceiptsCount}  |  {Output.Value(dashboard.UnpaidReceiptsTotal)}", Tone.Green, true)],
+                [new TerminalCell("Πιστωτικά", Tone.Muted), new TerminalCell($"{Output.Value(dashboard.CreditNoteBalance)}", Tone.Red, true)],
+                [new TerminalCell("Προμήθειες", Tone.Muted), new TerminalCell($"{Output.Value(dashboard.PartnerCommissions.Sum(x => x.Commission))}", Tone.Cyan, true)]
+            ]);
+
+            ui.Line();
+            ui.Line("  30/60/90: " + string.Join("  |  ", dashboard.ExpiryBuckets.Select(x => $"{x.Bucket}:{x.Count}")), Tone.Muted);
+            ui.Line("  Μήνες: " + string.Join("  |  ", dashboard.MonthlyCollection.TakeLast(6).Select(x => $"{x.Month}:{x.Amount:0.00}")), Tone.Muted);
+        }
+
+        void ExportDashboardSummary()
+        {
+            ui.Prompt("Αποθήκευση dashboard (π.χ. dashboard.csv ή dashboard.txt)");
+            var destination = input.ReadLine();
+            if (string.IsNullOrWhiteSpace(destination)) return;
+
+            using var db = new Database(path);
+            var dashboard = new Backoffice(db).Dashboard();
+            var fullPath = Path.GetFullPath(destination);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+
+            var extension = Path.GetExtension(fullPath).ToLowerInvariant();
+            if (extension == ".csv")
+            {
+                var lines = new List<string>
+                {
+                    "metric,value",
+                    $"overdue_policies,{dashboard.OverduePoliciesCount}",
+                    $"overdue_policies_total,{dashboard.OverduePoliciesTotal}",
+                    $"unpaid_receipts,{dashboard.UnpaidReceiptsCount}",
+                    $"unpaid_receipts_total,{dashboard.UnpaidReceiptsTotal}",
+                    $"credit_note_balance,{dashboard.CreditNoteBalance}",
+                    $"credit_note_count,{dashboard.CreditNoteCount}",
+                };
+                foreach (var item in dashboard.CustomerBalances)
+                    lines.Add($"customer_balance_{item.Currency},{item.Outstanding}");
+                foreach (var item in dashboard.ExpiryBuckets)
+                    lines.Add($"expiry_{item.Bucket},{item.Count},{item.Total}");
+                foreach (var item in dashboard.PartnerCommissions)
+                    lines.Add($"partner_{item.Partner},{item.Commission}");
+                foreach (var item in dashboard.MonthlyCollection)
+                    lines.Add($"month_{item.Month},{item.Amount}");
+
+                File.WriteAllText(fullPath, string.Join(Environment.NewLine, lines));
+            }
+            else
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("KALYPSIS CLI Dashboard Summary");
+                sb.AppendLine("==============================");
+                sb.AppendLine($"Overdue policies: {dashboard.OverduePoliciesCount} / {dashboard.OverduePoliciesTotal}");
+                sb.AppendLine($"Unpaid receipts: {dashboard.UnpaidReceiptsCount} / {dashboard.UnpaidReceiptsTotal}");
+                sb.AppendLine($"Credit note balance: {dashboard.CreditNoteBalance} ({dashboard.CreditNoteCount})");
+                sb.AppendLine("Customer balances by currency:");
+                foreach (var item in dashboard.CustomerBalances)
+                    sb.AppendLine($"  - {item.Currency}: outstanding {item.Outstanding}, customer credit {item.CustomerCredit}");
+                sb.AppendLine("Expiry buckets:");
+                foreach (var item in dashboard.ExpiryBuckets)
+                    sb.AppendLine($"  - {item.Bucket}: {item.Count} policies / {item.Total}");
+                sb.AppendLine("Partner commissions:");
+                foreach (var item in dashboard.PartnerCommissions)
+                    sb.AppendLine($"  - {item.Partner}: {item.Commission}");
+                sb.AppendLine("Monthly collections:");
+                foreach (var item in dashboard.MonthlyCollection)
+                    sb.AppendLine($"  - {item.Month}: {item.Amount}");
+                File.WriteAllText(fullPath, sb.ToString());
+            }
+
+            ui.Notice($"Το dashboard αποθηκεύτηκε στο {fullPath}.", true);
+            ui.Pause(input);
+        }
+
+        void DashboardList(string entity, string title, IReadOnlyDictionary<string, string> options, Func<Row, bool>? filter = null)
+        {
+            var page = 0;
+            var listOptions = new Dictionary<string, string>(options, StringComparer.Ordinal);
+            while (true)
+            {
+                ui.Screen(title, path);
+                List<Row> rows;
+                using (var db = new Database(path))
+                {
+                    rows = new Backoffice(db).List(entity, listOptions);
+                }
+                if (filter != null)
+                    rows = rows.Where(filter).ToList();
+
+                var pageSize = ui.Width < 70 ? 2 : Math.Clamp(ui.Height - 18, 4, 20);
+                var pages = Math.Max(1, (int)Math.Ceiling((double)rows.Count / pageSize)); page = Math.Clamp(page, 0, pages - 1);
+                ui.Result(new(title, rows.Skip(page * pageSize).Take(pageSize).ToArray()), entity, false);
+                ui.Line($"  Σελίδα {page + 1}/{pages}  |  {rows.Count} αποτελέσματα", Tone.Cyan);
+                ui.Line("  [N] Επόμενη  [P] Προηγούμενη  [0] Πίσω  |  Γράψτε κωδικό για άνοιγμα καρτέλας", Tone.Blue);
+                ui.Prompt("Επιλογή"); var choice = input.ReadLine()?.Trim(); if (choice is null or "0") return;
+                switch (choice.ToUpperInvariant())
+                {
+                    case "N" or "Ν": page = Math.Min(pages - 1, page + 1); break;
+                    case "P" or "Π": page = Math.Max(0, page - 1); break;
+                    default: Show(entity, title, choice); break;
+                }
+            }
+        }
+
         void Entity(string entity, string title)
         {
             while (true)
@@ -117,7 +285,7 @@ public static class InteractiveShell
                     ("[3]", "Προβολή καρτέλας", "", Tone.Cyan)
                 };
                 if (entity is not ("receipts" or "credits")) actions.Add(("[4]", "[~] Επεξεργασία", "", Tone.Amber));
-                actions.Add(("[5]", entity == "receipts" ? "[x] Ακύρωση είσπραξης" : entity == "credits" ? "[x] Ακύρωση πιστωτικού" : "[x] Διαγραφή", "Προσθήκη επιβεβαίωσης πριν τη διαγραφή", Tone.Red));
+                actions.Add(("[5]", entity == "receipts" ? "[x] Ακύρωση είσπραξης" : entity == "credits" ? "[x] Ακύρωση πιστωτικού" : "[x] Διαγρα��ή", "Προσθήκη επιβεβαίωσης πριν τη διαγραφή", Tone.Red));
                 actions.Add(("[6]", "Ιστορικό αλλαγών", "", Tone.Muted));
                 if (entity == "policies")
                 { actions.Add(("[7]", "Ανανέωση συμβολαίου", "", Tone.Green)); actions.Add(("[8]", "Ακύρωση συμβολαίου", "", Tone.Red)); }
