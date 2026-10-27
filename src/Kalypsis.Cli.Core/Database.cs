@@ -14,6 +14,14 @@ public sealed class Row : Dictionary<string, object?>
 public sealed class Database : IDisposable
 {
     private const int ApplicationId = 1262701641;
+    private static readonly HashSet<string> MonetaryFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "amount", "gross", "net", "received", "credited", "credited_net",
+        "chargeable", "chargeable_net", "outstanding", "customer_credit",
+        "office_expected", "office_received", "partner_expected",
+        "credit_note_balance", "overdue_policies_total", "unpaid_receipts_total",
+        "total", "balance", "commission", "monthly_amount"
+    };
     private readonly SqliteConnection connection;
     private SqliteTransaction? transaction;
     public string Path { get; }
@@ -86,8 +94,20 @@ public sealed class Database : IDisposable
             for (var index = 0; index < reader.FieldCount; index++)
             {
                 var name = reader.GetName(index); object? value = reader.IsDBNull(index) ? null : reader.GetValue(index);
-                if (name.EndsWith("_cents", StringComparison.Ordinal)) { name = name[..^6]; value = value is null ? null : Convert.ToDecimal(value) / 100m; }
-                else if (name.EndsWith("_bps", StringComparison.Ordinal)) { name = name == "partner_bps" ? "partner_rate" : name == "office_bps" ? "office_rate" : name[..^4]; value = value is null ? null : Convert.ToDecimal(value) / 100m; }
+                if (name.EndsWith("_cents", StringComparison.Ordinal))
+                {
+                    name = name[..^6];
+                    value = value is null ? null : Convert.ToDecimal(value) / 100m;
+                }
+                else if (name.EndsWith("_bps", StringComparison.Ordinal))
+                {
+                    name = name == "partner_bps" ? "partner_rate" : name == "office_bps" ? "office_rate" : name[..^4];
+                    value = value is null ? null : Convert.ToDecimal(value) / 100m;
+                }
+                else if (MonetaryFields.Contains(name) && value is not null && value is not string)
+                {
+                    value = Convert.ToDecimal(value) / 100m;
+                }
                 row[name] = value;
             }
             rows.Add(row);
@@ -129,7 +149,7 @@ public sealed class Database : IDisposable
         CREATE TABLE credits(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL COLLATE NOCASE UNIQUE,number TEXT NOT NULL UNIQUE,policy_id INTEGER NOT NULL REFERENCES policies(id) ON DELETE RESTRICT,amount_cents INTEGER NOT NULL,net_cents INTEGER NOT NULL,date TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('posted','void')),reason TEXT NOT NULL,void_reason TEXT,created_at TEXT NOT NULL DEFAULT (datetime('now')));
         CREATE INDEX ix_credit_policy ON credits(policy_id);
         DROP VIEW policy_records;
-        CREATE VIEW policy_records AS SELECT p.*,c.name AS customer,i.name AS insurer,a.name AS partner,COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) AS received,COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited,COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited_net,CASE WHEN p.status='cancelled' THEN 0 ELSE p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) END AS chargeable,CASE WHEN p.status='cancelled' THEN 0 ELSE p.net_cents - COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) END AS chargeable_net,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) - COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0)) END AS outstanding,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) - (p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0))) END AS customer_credit,p.status,p.created_at FROM policies p JOIN customers c ON c.id=p.customer_id LEFT JOIN insurers i ON i.id=p.insurer_id LEFT JOIN partners a ON a.id=p.partner_id;
+        CREATE VIEW policy_records AS SELECT p.*,c.name AS customer,i.name AS insurer,a.name AS partner,COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) AS received,COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited,COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited_net,(p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0)) AS chargeable,(p.net_cents - COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0)) AS chargeable_net,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) - COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0)) END AS outstanding,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) - (p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0))) END AS customer_credit,p.status,p.created_at FROM policies p JOIN customers c ON c.id=p.customer_id LEFT JOIN insurers i ON i.id=p.insurer_id LEFT JOIN partners a ON a.id=p.partner_id;
         CREATE VIEW credit_records AS SELECT cr.*,p.code AS policy_code,p.number AS policy,c.name AS customer,p.currency FROM credits cr JOIN policies p ON p.id=cr.policy_id JOIN customers c ON c.id=p.customer_id;
         """;
 
@@ -146,8 +166,7 @@ public sealed class Database : IDisposable
         CREATE INDEX ix_receipt_policy ON receipts(policy_id);
         CREATE TABLE events(id INTEGER PRIMARY KEY AUTOINCREMENT,entity TEXT NOT NULL,entity_id INTEGER NOT NULL,action TEXT NOT NULL,occurred_at TEXT NOT NULL,before_json TEXT,after_json TEXT);
         CREATE INDEX ix_event_entity ON events(entity,entity_id);
-        CREATE VIEW policy_records AS SELECT p.*,c.name AS customer,i.name AS insurer,a.name AS partner,COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) AS received,COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited,COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited_net,CASE WHEN p.status='cancelled' THEN 0 ELSE p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) END AS chargeable,CASE WHEN p.status='cancelled' THEN 0 ELSE p.net_cents - COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) END AS chargeable_net,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) - COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0)) END AS outstanding,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) - (p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0))) END AS customer_credit,p.status,p.created_at FROM policies p JOIN customers c ON c.id=p.customer_id LEFT JOIN insurers i ON i.id=p.insurer_id LEFT JOIN partners a ON a.id=p.partner_id;
+        CREATE VIEW policy_records AS SELECT p.*,c.name AS customer,i.name AS insurer,a.name AS partner,COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) AS received,COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited,COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) AS credited_net,(p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0)) AS chargeable,(p.net_cents - COALESCE((SELECT SUM(cr.net_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0)) AS chargeable_net,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0) - COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0)) END AS outstanding,CASE WHEN p.status='cancelled' THEN 0 ELSE MAX(0, COALESCE((SELECT SUM(r.amount_cents) FROM receipts r WHERE r.policy_id=p.id AND r.status='posted'),0) - (p.gross_cents - COALESCE((SELECT SUM(cr.amount_cents) FROM credits cr WHERE cr.policy_id=p.id AND cr.status='posted'),0))) END AS customer_credit,p.status,p.created_at FROM policies p JOIN customers c ON c.id=p.customer_id LEFT JOIN insurers i ON i.id=p.insurer_id LEFT JOIN partners a ON a.id=p.partner_id;
         CREATE VIEW receipt_records AS SELECT r.*,p.code AS policy_code,p.number AS policy,c.name AS customer,p.currency FROM receipts r JOIN policies p ON p.id=r.policy_id JOIN customers c ON c.id=p.customer_id;
         """;
 }
-
