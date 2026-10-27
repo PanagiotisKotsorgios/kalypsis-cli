@@ -19,7 +19,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
 {
     private readonly DateOnly today = currentDate ?? DateOnly.FromDateTime(DateTime.Today);
     public static readonly string[] Entities = ["customers", "insurers", "partners", "policies", "receipts", "credits"];
-    public Row Overview() => db.Query("SELECT (SELECT COUNT(*) FROM customers) AS customers, (SELECT COUNT(*) FROM insurers) AS insurers, (SELECT COUNT(*) FROM partners) AS partners, (SELECT COUNT(*) FROM policies) AS policies, (SELECT COUNT(*) FROM receipts) AS receipts, (SELECT COUNT(*) FROM credits) AS credits").FirstOrDefault() ?? new Row();
+    public Row Overview() => db.Query("SELECT (SELECT COUNT(*) FROM customers) AS customers, (SELECT COUNT(*) FROM insurers) AS insurers, (SELECT COUNT(*) FROM partners) AS partners, (SELECT COUNT(*) FROM policies) AS policies, (SELECT COUNT(*) FROM receipts) AS receipts, (SELECT COUNT(*) FROM credits) AS credits").Single();
     private static string Need(IReadOnlyDictionary<string, string> fields, string key) =>
         fields.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : throw new UserError($"Λείπει η επιλογή --{key}.");
 
@@ -92,7 +92,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     {
         entity = Entity(entity);
         var numericId = long.TryParse(reference, NumberStyles.None, CultureInfo.InvariantCulture, out var value) && value > 0 ? value : -1;
-        var row = db.Query($"SELECT * FROM {View(entity)} WHERE id=$id OR code=$code COLLATE NOCASE ORDER BY CASE WHEN id=$id THEN 0 ELSE 1 END LIMIT 1", ("$id", numericId), ("$code", reference)).FirstOrDefault()
+        var row = db.Query($"SELECT * FROM {View(entity)} WHERE id=$id OR code=$code COLLATE NOCASE ORDER BY CASE WHEN id=$id THEN 0 ELSE 1 END LIMIT 1", ("$id", numericId), ("$code", reference)).SingleOrDefault()
             ?? throw new UserError($"Δεν βρέθηκε εγγραφή {entity} με ID/κωδικό «{reference}».");
         return entity == "policies" ? EnrichPolicy(row) : row;
     }
@@ -126,7 +126,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
             clauses.Add($"{(entity == "policies" ? "start" : "date")} {(key == "from" ? ">=" : "<=")} ${key}");
             parameters.Add(("$" + key, Validation.Date(date)));
         }
-        if (options.TryGetValue("from", out var from) && options.TryGetValue("to", out var to) && string.CompareOrdinal(from, to) > 0) throw new UserError("Η ημερομηνία Από πρέπ��ι να είναι πριν ή ίδια με την έως.");
+        if (options.TryGetValue("from", out var from) && options.TryGetValue("to", out var to) && string.CompareOrdinal(from, to) > 0) throw new UserError("Η ημερομηνία Από πρέπει να είναι πριν ή ίση με την ημερομηνία Έως.");
         if (options.TryGetValue("status", out var status))
         {
             if (entity == "policies" && status is "active" or "expired" or "scheduled")
@@ -136,7 +136,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
             }
             else
             {
-                if (!(entity == "policies" ? new[] { "cancelled", "renewed" } : new[] { "posted", "void" }).Contains(status)) throw new UserError("Μη έγκυρη κατάσταση. Δείτε τη βοήθεια.");
+                if (!(entity == "policies" ? new[] { "cancelled", "renewed" } : new[] { "posted", "void" }).Contains(status)) throw new UserError("Μη έγκυρη κατάσταση. Δείτε το --help.");
                 clauses.Add("status=$status"); parameters.Add(("$status", status));
             }
         }
@@ -168,7 +168,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     public Row Update(string entity, string reference, IReadOnlyDictionary<string, string> options) => db.Atomic(() =>
     {
         entity = Entity(entity);
-        if (entity is "receipts" or "credits") throw new UserError("Οι οικονομικές εγγραφές δεν τροποποιούνται. Χρησιμοποιήστε void και νέα καταχώρηση.");
+        if (entity is "receipts" or "credits") throw new UserError("Οι οικονομικές εγγραφές δεν τροποποιούνται. Χρησιμοποιήστε void και νέα εγγραφή.");
         var before = Show(entity, reference);
         var fields = entity switch { "customers" => CustomerFields(options, before), "policies" => PolicyFields(options, before), _ => PartyFields(options, entity == "partners", before) };
         db.Update(entity, before.Id, fields); var after = Show(entity, reference);
@@ -178,14 +178,16 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     public void Delete(string entity, string reference) => db.Atomic(() =>
     {
         entity = Entity(entity);
-        if (entity is "receipts" or "credits") throw new UserError("Χρησιμοποιήστε void για ακύρωση λανθασμένης οικον��μικής εγγραφής· το delete δεν επιτρέπεται.");
+        if (entity is "receipts" or "credits") throw new UserError("Χρησιμοποιήστε void για ακύρωση λανθασμένης οικονομικής εγγραφής· τη διαγραφή δεν επιτρέπεται.");
         var before = Show(entity, reference);
+        if (entity == "policies" && (before["previous_id"] is not null || Convert.ToInt64(db.Scalar("SELECT COUNT(*) FROM policies WHERE previous_id=$id", ("$id", before.Id))) > 0))
+            throw new UserError("Η διαγραφή δεν επιτρέπεται: το συμβόλαιο έχει συνδεδεμένη ανανέωση ή είναι η ίδια ανανέωση.");
         var count = entity switch
         {
             "customers" => db.Scalar("SELECT COUNT(*) FROM policies WHERE customer_id=$id", ("$id", before.Id)),
             "insurers" => db.Scalar("SELECT COUNT(*) FROM policies WHERE insurer_id=$id", ("$id", before.Id)),
             "partners" => db.Scalar("SELECT COUNT(*) FROM policies WHERE partner_id=$id", ("$id", before.Id)),
-            _ => db.Scalar("SELECT (SELECT COUNT(*) FROM receipts WHERE policy_id=$id)+(SELECT COUNT(*) FROM credits WHERE policy_id=$id)+(SELECT COUNT(*) FROM policies WHERE previous_id=$id OR (id=$id AND status='renewed'))", ("$id", before.Id))
+            _ => db.Scalar("SELECT (SELECT COUNT(*) FROM receipts WHERE policy_id=$id)+(SELECT COUNT(*) FROM credits WHERE policy_id=$id)+(SELECT COUNT(*) FROM policies WHERE previous_id=$id)", ("$id", before.Id))
         };
         if (Convert.ToInt64(count) > 0) throw new UserError("Η διαγραφή δεν επιτρέπεται: υπάρχουν συνδεδεμένα δεδομένα.");
         db.Execute($"DELETE FROM {entity} WHERE id=$id", ("$id", before.Id)); db.Audit(entity, before.Id, "delete", before, null); return 0;
@@ -221,7 +223,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     public Row Renew(string reference, IReadOnlyDictionary<string, string> options) => db.Atomic(() =>
     {
         var previous = Show("policies", reference);
-        if (previous.Text("status") is "cancelled" or "renewed") throw new UserError("Δεν επιτρέπεται νέα ανανέωση ακυρωμένου ή ήδη ανανεωμένου συμβολαίου.");
+        if (previous.Text("status") is "cancelled" or "renewed") throw new UserError("Δεν επιτρέπεται νέα αναν��ωση ακυρωμένου ή ήδη ανανεωμένου συμβολαίου.");
         var fields = new Dictionary<string, string>
         {
             ["customer"] = previous.Text("customer_id"), ["insurer"] = previous.Text("insurer_id"), ["number"] = Need(options, "number"),
@@ -246,7 +248,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
         catch (UserError)
         {
             var numeric = long.TryParse(reference, out var parsed) ? parsed : -1;
-            var found = db.Scalar("SELECT entity_id FROM events WHERE entity=$entity AND (entity_id=$id OR json_extract(before_json,'$.code')=$code COLLATE NOCASE OR json_extract(after_json,'$.code')=$code COLLATE NOCASE) ORDER BY id DESC LIMIT 1", ("$entity", entity), ("$id", numeric), ("$code", reference));
+            var found = db.Scalar("SELECT entity_id FROM events WHERE entity=$entity AND (entity_id=$id OR json_extract(before_json,'$.code')=$code COLLATE NOCASE OR json_extract(after_json,'$.code')=$code COLLATE NOCASE)", ("$entity", entity), ("$id", numeric), ("$code", reference));
             if (found is null) throw new UserError("Δεν βρέθηκε ιστορικό για αυτόν τον κωδικό ή ID.");
             id = Convert.ToInt64(found);
         }
@@ -283,7 +285,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
     private static Dictionary<string, object?> PartyFields(IReadOnlyDictionary<string, string> options, bool partner, Row? before = null)
     {
         string Value(string key, string fallback = "") => options.GetValueOrDefault(key) ?? before?.Text(key) ?? fallback;
-        var fields = new Dictionary<string, object?> { ["name"] = Validation.Text(Value("name"), "Ονομασία", 200, true), ["phone"] = Validation.Phone(Value("phone")), ["email"] = Validation.Email(Value("email")), ["code"] = before?.Text("code") ?? Validation.Text(Value("code"), "Κωδικός", 40) };
+        var fields = new Dictionary<string, object?> { ["name"] = Validation.Text(Value("name"), "Ονομασία", 200, true), ["phone"] = Validation.Phone(Value("phone")), ["email"] = Validation.Email(Value("email")), ["city"] = Validation.Text(Value("city"), "Πόλη", 120), ["code"] = before?.Text("code") ?? Validation.Text(Value("code"), "Κωδικός", 40) };
         if (partner) fields["commission_bps"] = Validation.Rate(Value("commission", "0"));
         return fields;
     }
@@ -307,7 +309,7 @@ public sealed class Backoffice(Database db, DateOnly? currentDate = null)
                 || !Equals(partner?.Id, before["partner_id"]) || gross / 100m < before.Number("gross") && gross / 100m < before.Number("received") + before.Number("credited")
                 || before.Number("credited") > gross / 100m || before.Number("credited_net") > net / 100m
                 || net / 100m - before.Number("credited_net") > gross / 100m - before.Number("credited")))
-            throw new UserError("Οι καταχωρημένες εισπράξεις ή τα πιστωτικά δεν επιτρέπουν αυτή την αλλαγή μερών, νομίσματος ή συνδέσεων.");
+            throw new UserError("Οι καταχωρημένες εισπράξεις ή τα πιστωτικά δεν επιτρέπουν αυτή την αλλαγή μερών, νομίσματος ή συνεργατών.");
         return new() { ["number"] = Validation.Text(Value("number"), "Αριθμός συμβολαίου", 80, true), ["customer_id"] = customer.Id, ["insurer_id"] = insurer.Id,
             ["partner_id"] = partner?.Id, ["branch"] = Validation.Text(Value("branch"), "Κλάδος", 100), ["plate"] = Validation.Text(Value("plate"), "Πινακίδα", 20),
             ["start"] = start, ["end"] = end, ["gross_cents"] = gross, ["net_cents"] = net, ["currency"] = currency, ["office_bps"] = officeRate, ["partner_bps"] = partnerRate,
